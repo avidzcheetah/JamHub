@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: ["jamhub-avidz.vercel.app", "http://localhost:5173"],
     methods: ["GET", "POST"],
   },
 });
