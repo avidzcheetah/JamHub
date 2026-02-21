@@ -571,14 +571,17 @@ body,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 .video-grid {
   flex: 1;
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  overflow: auto;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+  min-height: 0;
+  grid-auto-rows: 1fr;
 }
 
 /* Responsive grid based on count */
@@ -605,21 +608,25 @@ body,
 
 .video-tile {
   position: relative;
-  background: var(--bg-card);
+  background: #000;
+  /* black letterbox bars like Zoom/WhatsApp */
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border);
-  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
+  min-width: 0;
 }
 
 .video-tile video {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  /* show full frame — like Zoom / WhatsApp */
 }
 
 .video-tile.local video {
@@ -860,7 +867,70 @@ body,
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 768px) {
+
+/* ── Tablet / small desktop (≤ 900px) ── */
+@media (max-width: 900px) {
+
+  .video-grid[data-count="5"],
+  .video-grid[data-count="6"] {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Mobile portrait (≤ 600px) ── */
+@media (max-width: 600px) {
+
+  /* Lobby scrollable on tiny screens */
+  html,
+  body,
+  #root {
+    overflow: auto;
+  }
+
+  .lobby {
+    align-items: flex-start;
+    padding: 20px 0;
+    min-height: 100%;
+    height: auto;
+  }
+
+  /* Room layout: controls bar thinner */
+  .controls-bar {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .ctrl-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Video grid: always 1 column on phones */
+  .video-grid {
+    padding: 6px;
+    gap: 6px;
+    grid-auto-rows: 1fr;
+  }
+
+  .video-grid[data-count="1"] {
+    grid-template-columns: 1fr;
+  }
+
+  .video-grid[data-count="2"] {
+    grid-template-columns: 1fr;
+  }
+
+  .video-grid[data-count="3"],
+  .video-grid[data-count="4"] {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .video-grid[data-count="5"],
+  .video-grid[data-count="6"] {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Chat: full screen overlay */
   .chat-panel {
     position: fixed;
     inset: 0;
@@ -868,14 +938,12 @@ body,
     z-index: 50;
   }
 
-  .video-grid {
-    padding: 8px;
-    gap: 8px;
+  /* Room header compact */
+  .room-header {
+    padding: 8px 14px;
   }
 
-  .video-grid[data-count="2"],
-  .video-grid[data-count="3"],
-  .video-grid[data-count="4"] {
-    grid-template-columns: 1fr;
+  .room-header .logo {
+    font-size: 1rem;
   }
 }
