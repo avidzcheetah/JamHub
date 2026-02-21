@@ -4,4 +4,5 @@ const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_URL || 'http://localhost
 
 export const socket = io(SIGNALING_SERVER, {
     autoConnect: false,
+    transports: ['polling', 'websocket'], // polling first ensures Render proxy compatibility
 });

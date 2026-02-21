@@ -4,14 +4,18 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
+}));
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["jamhub-avidz.vercel.app", "http://localhost:5173"],
+    origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
     methods: ["GET", "POST"],
   },
+  // Render may block WS upgrade on first request — allow polling fallback
+  transports: ["websocket", "polling"],
 });
 
 // In-memory room state
