@@ -7,7 +7,7 @@ export default function VideoGrid({ localStream, peers, isCameraOff, userName })
         if (localVideoRef.current && localStream) {
             localVideoRef.current.srcObject = localStream;
         }
-    }, [localStream]);
+    }, [localStream, isCameraOff]); // re-assign srcObject when camera comes back on
 
     const peerEntries = Object.entries(peers);
     const totalCount = 1 + peerEntries.length;
@@ -19,11 +19,17 @@ export default function VideoGrid({ localStream, peers, isCameraOff, userName })
         >
             {/* Local video */}
             <div className="video-tile local">
-                {isCameraOff ? (
+                {isCameraOff && (
                     <div className="avatar-placeholder">{userName?.charAt(0) || '?'}</div>
-                ) : (
-                    <video ref={localVideoRef} autoPlay playsInline muted />
                 )}
+                {/* Always mounted so ref stays valid; hidden by CSS when camera is off */}
+                <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{ display: isCameraOff ? 'none' : 'block' }}
+                />
                 <span className="label">You ({userName})</span>
             </div>
 
