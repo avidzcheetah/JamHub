@@ -33,9 +33,11 @@ export default function Chat({ messages, onSend, userName, onClose }) {
 
             <div className="chat-messages">
                 {messages.length === 0 && (
-                    <p style={{ color: 'var(--text-muted)', fontSize: '.85rem', textAlign: 'center', marginTop: '2rem' }}>
-                        No messages yet. Say hi! 👋
-                    </p>
+                    <div className="chat-empty">
+                        <span className="chat-empty-icon">💬</span>
+                        <p className="chat-empty-title">No messages yet</p>
+                        <p className="chat-empty-sub">Start the conversation — say hi! 👋</p>
+                    </div>
                 )}
                 {messages.map((msg, i) => {
                     const isOwn = msg.senderId === socket.id;

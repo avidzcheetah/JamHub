@@ -797,6 +797,7 @@ body,
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .room-header .logo {
@@ -806,6 +807,44 @@ body,
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  flex-shrink: 0;
+}
+
+/* Participant count badge */
+.participant-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  padding: 5px 11px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+}
+
+.participant-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: .6;
+    transform: scale(.85);
+  }
 }
 
 .room-header .room-id {
@@ -816,11 +855,19 @@ body,
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background .2s;
+  transition: background .2s, color .2s;
+  white-space: nowrap;
 }
 
 .room-header .room-id:hover {
   background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Flash "Copied!" feedback */
+.room-header .room-id.copied {
+  color: #22c55e;
+  border-color: #22c55e;
 }
 
 .room-body {
@@ -874,8 +921,7 @@ body,
 
 .video-tile {
   position: relative;
-  background: #000;
-  /* black letterbox bars like Zoom/WhatsApp */
+  background: radial-gradient(ellipse at center, #0d0f1a 0%, #000 100%);
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border);
@@ -884,6 +930,13 @@ body,
   justify-content: center;
   min-height: 0;
   min-width: 0;
+  transition: border-color .2s;
+}
+
+/* Subtle accent ring on the local (self) tile */
+.video-tile.local {
+  border-color: rgba(124, 58, 237, .45);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, .18) inset;
 }
 
 .video-tile video {
@@ -905,11 +958,14 @@ body,
   left: 12px;
   font-size: .78rem;
   font-weight: 600;
-  background: rgba(0, 0, 0, .6);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, .65);
+  backdrop-filter: blur(8px);
   padding: 4px 12px;
   border-radius: var(--radius-full);
   color: #fff;
+  z-index: 3;
+  /* always above video, status overlay, etc. */
+  pointer-events: none;
 }
 
 .video-tile .avatar-placeholder {
@@ -963,6 +1019,21 @@ body,
 .ctrl-btn.active {
   background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, .35);
+}
+
+/* Mic / camera OFF state — red tint like Google Meet / Zoom */
+.ctrl-btn.ctrl-off {
+  background: rgba(239, 68, 68, .15);
+  border-color: rgba(239, 68, 68, .5);
+  color: #f87171;
+}
+
+.ctrl-btn.ctrl-off:hover {
+  background: rgba(239, 68, 68, .25);
+  border-color: #ef4444;
+  color: #fff;
 }
 
 .ctrl-btn.danger {
@@ -1038,6 +1109,38 @@ body,
   gap: 12px;
 }
 
+/* Empty state */
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.chat-empty-icon {
+  font-size: 2.5rem;
+  opacity: .5;
+  filter: grayscale(.3);
+}
+
+.chat-empty-title {
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.chat-empty-sub {
+  font-size: .78rem;
+  color: var(--text-muted);
+  opacity: .65;
+  margin: 0;
+}
+
 .chat-msg {
   display: flex;
   flex-direction: column;
@@ -1059,7 +1162,8 @@ body,
 .chat-msg .bubble {
   background: var(--bg-card);
   padding: 10px 14px;
-  border-radius: var(--radius-md);
+  /* WhatsApp/iMessage style: flat on the speech-origin corner */
+  border-radius: 18px 18px 18px 4px;
   font-size: .88rem;
   line-height: 1.45;
   max-width: 260px;
@@ -1068,9 +1172,11 @@ body,
 }
 
 .chat-msg.own .bubble {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #6d28d9);
+  border-color: transparent;
   color: #fff;
+  border-radius: 18px 18px 4px 18px;
+  /* flat on bottom-right for sent */
 }
 
 .chat-msg .timestamp {

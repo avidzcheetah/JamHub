@@ -14,28 +14,26 @@ export default function App() {
 
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [roomIdCopied, setRoomIdCopied] = useState(false);
 
-    // Track unread messages: increment whenever a new message arrives and chat is closed
+    // Track unread messages when chat is closed
     useEffect(() => {
         if (chatMessages.length === 0) return;
-        if (!isChatOpen) {
-            setUnreadCount(prev => prev + 1);
-        }
+        if (!isChatOpen) setUnreadCount(prev => prev + 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatMessages.length]);
 
-    // Clear unread count when chat is opened
-    const openChat = () => {
-        setIsChatOpen(true);
-        setUnreadCount(0);
-    };
-
+    const openChat = () => { setIsChatOpen(true); setUnreadCount(0); };
     const closeChat = () => setIsChatOpen(false);
+    const toggleChat = () => { if (isChatOpen) closeChat(); else openChat(); };
 
-    const toggleChat = () => {
-        if (isChatOpen) closeChat();
-        else openChat();
+    const copyRoomId = () => {
+        navigator.clipboard.writeText(roomId);
+        setRoomIdCopied(true);
+        setTimeout(() => setRoomIdCopied(false), 1800);
     };
+
+    const participantCount = 1 + Object.keys(peers).length;
 
     if (!isInRoom) return <Lobby onJoin={joinRoom} />;
 
@@ -43,8 +41,20 @@ export default function App() {
         <div className="room">
             <header className="room-header">
                 <span className="logo">🎸 JamHub</span>
-                <span className="room-id" title="Click to copy Room ID" onClick={() => navigator.clipboard.writeText(roomId)}>
-                    Room: {roomId}
+
+                {/* Live participant count */}
+                <div className="participant-badge">
+                    <span className="dot" />
+                    {participantCount} participant{participantCount !== 1 ? 's' : ''}
+                </div>
+
+                {/* Room ID — click to copy with visual feedback */}
+                <span
+                    className={`room-id${roomIdCopied ? ' copied' : ''}`}
+                    title={roomIdCopied ? 'Copied!' : 'Click to copy Room ID'}
+                    onClick={copyRoomId}
+                >
+                    {roomIdCopied ? '✓ Copied!' : `#${roomId}`}
                 </span>
             </header>
 
