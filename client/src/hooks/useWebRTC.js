@@ -22,7 +22,7 @@ const ICE_SERVERS = {
 
 export function useWebRTC() {
     const [localStream, setLocalStream] = useState(null);
-    const [peers, setPeers] = useState({}); // { socketId: { stream, userName, pc } }
+    const [peers, setPeers] = useState({}); // { socketId: { stream, userName, isMuted, isCameraOff, pc } }
     const [isMuted, setIsMuted] = useState(false);
     const [isCameraOff, setIsCameraOff] = useState(false);
     const [chatMessages, setChatMessages] = useState([]);
@@ -32,6 +32,9 @@ export function useWebRTC() {
 
     const peersRef = useRef({});
     const localStreamRef = useRef(null);
+    const roomIdRef = useRef('');
+    const isMutedRef = useRef(false);
+    const isCameraOffRef = useRef(false);
 
     // ── Get local media ──────────────────────────────────────
     const startLocalStream = useCallback(async () => {
@@ -45,7 +48,6 @@ export function useWebRTC() {
             return stream;
         } catch (err) {
             console.error('Error accessing media devices:', err);
-            // fallback: try audio only
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: false,
@@ -58,6 +60,17 @@ export function useWebRTC() {
                 console.error('Cannot access any media device:', e);
                 return null;
             }
+        }
+    }, []);
+
+    // ── Broadcast our media state to everyone in the room ────
+    const broadcastMediaState = useCallback((muted, cameraOff) => {
+        if (roomIdRef.current) {
+            socket.emit('media-state', {
+                roomId: roomIdRef.current,
+                isMuted: muted,
+                isCameraOff: cameraOff,
+            });
         }
     }, []);
 
@@ -104,7 +117,13 @@ export function useWebRTC() {
         peersRef.current[remoteSocketId] = { pc, userName: remoteUserName };
         setPeers((prev) => ({
             ...prev,
-            [remoteSocketId]: { stream: null, userName: remoteUserName, pc },
+            [remoteSocketId]: {
+                stream: null,
+                userName: remoteUserName,
+                isMuted: false,
+                isCameraOff: false,
+                pc,
+            },
         }));
 
         return pc;
@@ -124,28 +143,49 @@ export function useWebRTC() {
     }, []);
 
     // ── Join Room ────────────────────────────────────────────
-    const joinRoom = useCallback(async (name, room) => {
+    // opts: { startMuted: bool, startCameraOff: bool }
+    const joinRoom = useCallback(async (name, room, opts = {}) => {
         setUserName(name);
         setRoomId(room);
+        roomIdRef.current = room;
 
         const stream = await startLocalStream();
         if (!stream) return;
 
+        // Apply initial muted / camera-off preferences
+        const { startMuted = false, startCameraOff = false } = opts;
+
+        if (startMuted) {
+            const audioTrack = stream.getAudioTracks()[0];
+            if (audioTrack) audioTrack.enabled = false;
+            setIsMuted(true);
+            isMutedRef.current = true;
+        }
+        if (startCameraOff) {
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) videoTrack.enabled = false;
+            setIsCameraOff(true);
+            isCameraOffRef.current = true;
+        }
+
         socket.connect();
         socket.emit('join-room', { roomId: room, userName: name });
         setIsInRoom(true);
-    }, [startLocalStream]);
+
+        // Broadcast our initial state after a brief moment (let signaling settle)
+        setTimeout(() => {
+            broadcastMediaState(startMuted, startCameraOff);
+        }, 500);
+    }, [startLocalStream, broadcastMediaState]);
 
     // ── Leave Room ───────────────────────────────────────────
     const leaveRoom = useCallback(() => {
-        // Close all peer connections
         Object.keys(peersRef.current).forEach((id) => {
             peersRef.current[id].pc.close();
         });
         peersRef.current = {};
         setPeers({});
 
-        // Stop local media tracks
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => track.stop());
             localStreamRef.current = null;
@@ -153,10 +193,13 @@ export function useWebRTC() {
         setLocalStream(null);
 
         socket.disconnect();
+        roomIdRef.current = '';
         setIsInRoom(false);
         setChatMessages([]);
         setIsMuted(false);
         setIsCameraOff(false);
+        isMutedRef.current = false;
+        isCameraOffRef.current = false;
     }, []);
 
     // ── Toggle Audio ─────────────────────────────────────────
@@ -165,10 +208,13 @@ export function useWebRTC() {
             const audioTrack = localStreamRef.current.getAudioTracks()[0];
             if (audioTrack) {
                 audioTrack.enabled = !audioTrack.enabled;
-                setIsMuted(!audioTrack.enabled);
+                const newMuted = !audioTrack.enabled;
+                setIsMuted(newMuted);
+                isMutedRef.current = newMuted;
+                broadcastMediaState(newMuted, isCameraOffRef.current);
             }
         }
-    }, []);
+    }, [broadcastMediaState]);
 
     // ── Toggle Video ─────────────────────────────────────────
     const toggleVideo = useCallback(() => {
@@ -176,20 +222,22 @@ export function useWebRTC() {
             const videoTrack = localStreamRef.current.getVideoTracks()[0];
             if (videoTrack) {
                 videoTrack.enabled = !videoTrack.enabled;
-                setIsCameraOff(!videoTrack.enabled);
+                const newCameraOff = !videoTrack.enabled;
+                setIsCameraOff(newCameraOff);
+                isCameraOffRef.current = newCameraOff;
+                broadcastMediaState(isMutedRef.current, newCameraOff);
             }
         }
-    }, []);
+    }, [broadcastMediaState]);
 
     // ── Send Chat Message ────────────────────────────────────
     const sendMessage = useCallback((message) => {
         if (!message.trim()) return;
-        socket.emit('chat-message', { roomId, message, userName });
-    }, [roomId, userName]);
+        socket.emit('chat-message', { roomId: roomIdRef.current, message, userName });
+    }, [userName]);
 
     // ── Socket Event Listeners ───────────────────────────────
     useEffect(() => {
-        // When existing users are already in the room — initiate offers to them
         socket.on('existing-users', async (users) => {
             for (const user of users) {
                 const pc = createPeerConnection(user.socketId, user.userName);
@@ -197,21 +245,22 @@ export function useWebRTC() {
                 await pc.setLocalDescription(offer);
                 socket.emit('offer', { to: user.socketId, offer });
             }
+            // Tell existing users our current state
+            setTimeout(() => {
+                broadcastMediaState(isMutedRef.current, isCameraOffRef.current);
+            }, 800);
         });
 
-        // A new user joined — we wait for their offer
         socket.on('user-joined', ({ socketId, userName: remoteUserName }) => {
             console.log(`👤 ${remoteUserName} joined`);
-            // Don't create PC yet; wait for the new user to send an offer,
-            // but if we are the existing user, the new user sends us an offer.
-            // Actually, the signaling flow is:
-            //   existing user sends offer to new user via 'existing-users'
-            //   but 'user-joined' fires on existing users, not new user.
-            // So 'user-joined' is for UI notification only (the offer flow is
-            // handled by 'existing-users' on the new peer's side).
+            // Send our current state to the new user so they see our correct status
+            socket.emit('media-state', {
+                roomId: roomIdRef.current,
+                isMuted: isMutedRef.current,
+                isCameraOff: isCameraOffRef.current,
+            });
         });
 
-        // Received an offer from a peer who just joined
         socket.on('offer', async ({ from, offer, userName: remoteUserName }) => {
             const pc = createPeerConnection(from, remoteUserName);
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -220,7 +269,6 @@ export function useWebRTC() {
             socket.emit('answer', { to: from, answer });
         });
 
-        // Received an answer to our offer
         socket.on('answer', async ({ from, answer }) => {
             const peer = peersRef.current[from];
             if (peer) {
@@ -228,7 +276,6 @@ export function useWebRTC() {
             }
         });
 
-        // Received ICE candidates
         socket.on('ice-candidate', async ({ from, candidate }) => {
             const peer = peersRef.current[from];
             if (peer) {
@@ -240,14 +287,27 @@ export function useWebRTC() {
             }
         });
 
-        // User left
         socket.on('user-left', ({ socketId }) => {
             removePeer(socketId);
         });
 
-        // Chat messages
         socket.on('chat-message', (msg) => {
             setChatMessages((prev) => [...prev, msg]);
+        });
+
+        // Remote peer media state changed
+        socket.on('media-state', ({ from, isMuted: peerMuted, isCameraOff: peerCameraOff }) => {
+            setPeers((prev) => {
+                if (!prev[from]) return prev;
+                return {
+                    ...prev,
+                    [from]: {
+                        ...prev[from],
+                        isMuted: peerMuted,
+                        isCameraOff: peerCameraOff,
+                    },
+                };
+            });
         });
 
         return () => {
@@ -258,8 +318,9 @@ export function useWebRTC() {
             socket.off('ice-candidate');
             socket.off('user-left');
             socket.off('chat-message');
+            socket.off('media-state');
         };
-    }, [createPeerConnection, removePeer]);
+    }, [createPeerConnection, removePeer, broadcastMediaState]);
 
     return {
         localStream,

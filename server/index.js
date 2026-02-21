@@ -66,6 +66,15 @@ io.on("connection", (socket) => {
     io.to(to).emit("ice-candidate", { from: socket.id, candidate });
   });
 
+  // ── Media state (muted / camera off) ────────────────────
+  socket.on("media-state", ({ roomId, isMuted, isCameraOff }) => {
+    socket.to(roomId).emit("media-state", {
+      from: socket.id,
+      isMuted,
+      isCameraOff,
+    });
+  });
+
   // ── Chat ────────────────────────────────────────────────
   socket.on("chat-message", ({ roomId, message, userName }) => {
     io.to(roomId).emit("chat-message", {
