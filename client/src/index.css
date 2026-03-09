@@ -622,6 +622,26 @@ body,
   letter-spacing: .5px;
 }
 
+/* Error Banner */
+.media-error-banner {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-md);
+  color: #fca5a5;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: fadeUp 0.3s ease-out;
+}
+
+.media-error-banner span {
+  font-size: 1.1rem;
+}
+
 /* Action row */
 .prejoin-actions {
   display: flex;

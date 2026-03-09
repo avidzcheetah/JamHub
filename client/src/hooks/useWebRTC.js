@@ -3,21 +3,17 @@ import { socket } from '../socket';
 
 const ICE_SERVERS = {
     iceServers: [
+        // Google public STUN servers (reliable, widely available)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
-        // Free TURN relay — needed for peers behind NAT in production
-        {
-            urls: [
-                'turn:openrelay.metered.ca:80',
-                'turn:openrelay.metered.ca:443',
-                'turn:openrelay.metered.ca:443?transport=tcp',
-            ],
-            username: 'openrelayproject',
-            credential: 'openrelayproject',
-        },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // Additional public STUN for redundancy
+        { urls: 'stun:stun.stunprotocol.org:3478' },
+        { urls: 'stun:stun.voip.blackberry.com:3478' },
     ],
+    iceCandidatePoolSize: 10,
 };
 
 export function useWebRTC() {
@@ -38,6 +34,16 @@ export function useWebRTC() {
 
     // ── Get local media ──────────────────────────────────────
     const startLocalStream = useCallback(async () => {
+        // getUserMedia is only available in a secure context (https:// or localhost).
+        // On plain http:// deployments navigator.mediaDevices is undefined.
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            const msg =
+                'Camera and microphone require a secure connection (HTTPS). ' +
+                'Please access this app over https:// or contact the site administrator.';
+            console.error('[JamHub]', msg);
+            throw new Error(msg);
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
@@ -48,6 +54,7 @@ export function useWebRTC() {
             return stream;
         } catch (err) {
             console.error('Error accessing media devices:', err);
+            // Fallback: audio-only if camera is denied / unavailable
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: false,
@@ -58,7 +65,7 @@ export function useWebRTC() {
                 return stream;
             } catch (e) {
                 console.error('Cannot access any media device:', e);
-                return null;
+                throw e;
             }
         }
     }, []);
@@ -152,8 +159,7 @@ export function useWebRTC() {
         setRoomId(room);
         roomIdRef.current = room;
 
-        const stream = await startLocalStream();
-        if (!stream) return;
+        const stream = await startLocalStream(); // throws on failure — caller handles the error
 
         // Apply initial muted / camera-off preferences
         const { startMuted = false, startCameraOff = false } = opts;

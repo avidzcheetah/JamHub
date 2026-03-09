@@ -11,6 +11,7 @@ export default function Lobby({ onJoin }) {
     const [micOn, setMicOn] = useState(true);
     const [camOn, setCamOn] = useState(true);
     const [joining, setJoining] = useState(false);
+    const [mediaError, setMediaError] = useState('');
 
     const previewVideoRef = useRef(null);
     const previewStreamRef = useRef(null);
@@ -143,10 +144,17 @@ export default function Lobby({ onJoin }) {
     };
 
     const handleJoin = async () => {
+        setMediaError('');
         setJoining(true);
         stopPreview();
         await new Promise(r => setTimeout(r, 300));
-        onJoin(name.trim(), room.trim(), { startMuted: !micOn, startCameraOff: !camOn });
+        try {
+            await onJoin(name.trim(), room.trim(), { startMuted: !micOn, startCameraOff: !camOn });
+        } catch (err) {
+            setJoining(false);
+            setMediaError(err.message || 'Could not access camera or microphone. Please check your browser permissions.');
+            startPreview(); // restart preview stream so user can retry
+        }
     };
 
     const generateRoom = () => {
@@ -240,6 +248,13 @@ export default function Lobby({ onJoin }) {
                                 <span className="prejoin-toggle-label">{camOn ? 'Camera On' : 'Camera Off'}</span>
                             </div>
                         </div>
+
+                        {/* Error banner */}
+                        {mediaError && (
+                            <div className="media-error-banner">
+                                <span>⚠️</span> {mediaError}
+                            </div>
+                        )}
 
                         {/* Actions */}
                         <div className="prejoin-actions">
