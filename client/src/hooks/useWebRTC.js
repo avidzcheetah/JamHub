@@ -109,7 +109,10 @@ export function useWebRTC() {
         };
 
         pc.oniceconnectionstatechange = () => {
-            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            console.log(`ICE State (${remoteUserName}):`, pc.iceConnectionState);
+            // 'disconnected' is a temporary state (WebRTC tries to reconnect).
+            // Only remove peer if it definitively fails or closes.
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
                 removePeer(remoteSocketId);
             }
         };
