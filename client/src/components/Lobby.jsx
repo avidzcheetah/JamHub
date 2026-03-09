@@ -11,7 +11,6 @@ export default function Lobby({ onJoin }) {
     const [micOn, setMicOn] = useState(true);
     const [camOn, setCamOn] = useState(true);
     const [joining, setJoining] = useState(false);
-    const [imgError, setImgError] = useState(false);
 
     const previewVideoRef = useRef(null);
     const previewStreamRef = useRef(null);
@@ -258,19 +257,7 @@ export default function Lobby({ onJoin }) {
                     </div>
                 )}
 
-                {/* Developer credit */}
-                <div className="lobby-credit">
-                    <div className="credit-photo">
-                        {!imgError
-                            ? <img src="/profile.jpg" alt="Witharana A.D.S." onError={() => setImgError(true)} />
-                            : <div className="credit-initials">W</div>
-                        }
-                    </div>
-                    <div className="credit-info">
-                        <span className="credit-role">Developer</span>
-                        <span className="credit-name">Witharana A.D.S.</span>
-                    </div>
-                </div>
+
             </div>
         </div>
     );
