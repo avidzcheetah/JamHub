@@ -14,10 +14,12 @@ const FALLBACK_ICE = [
 async function fetchIceServers() {
     try {
         const res = await fetch(`${SIGNALING_URL}/api/ice-servers`);
-        if (!res.ok) throw new Error('ICE fetch failed');
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(`Server returned ${res.status}: ${errorData.message || errorData.error || 'Unknown error'}`);
+        }
         const servers = await res.json();
         
-        // CRITICAL: Ensure we return an array. RTCPeerConnection fails otherwise.
         if (!Array.isArray(servers)) {
             console.error('[JamHub] ICE servers API did not return an array:', servers);
             return FALLBACK_ICE;
@@ -26,7 +28,7 @@ async function fetchIceServers() {
         console.log('[JamHub] ICE servers loaded:', servers.length);
         return servers;
     } catch (err) {
-        console.warn('[JamHub] Using fallback STUN servers:', err.message);
+        console.warn('[JamHub] Using fallback STUN servers. Reason:', err.message);
         return FALLBACK_ICE;
     }
 }

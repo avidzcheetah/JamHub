@@ -13,10 +13,10 @@ const fetch = require('node-fetch');
 const server = http.createServer(app);
 
 // Get dynamic ICE servers from Metered.ca
-app.get('/api/ice-servers', async (_req, res) => {
+app.get('/api/ice-servers', async (req, res) => {
   try {
-    const apiKey = process.env.METERED_API_KEY;
-    const appName = process.env.METERED_APP_NAME;
+    const apiKey = (process.env.METERED_API_KEY || '').trim();
+    const appName = (process.env.METERED_APP_NAME || '').trim();
 
     if (!apiKey || !appName) {
       console.warn('⚠️ [JamHub] Metered API credentials missing (METERED_API_KEY/METERED_APP_NAME). Falling back to STUN.');
@@ -28,21 +28,32 @@ app.get('/api/ice-servers', async (_req, res) => {
       ]);
     }
 
-    console.log(`📡 [JamHub] Fetching TURN credentials for app: ${appName}`);
-    const response = await fetch(
-      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
-    );
+    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`;
+    console.log(`📡 [JamHub] Fetching TURN credentials from Metered.ca...`);
+    
+    const response = await fetch(url).catch(e => {
+        console.error('❌ [JamHub] Network error fetching from Metered.ca:', e.message);
+        throw e;
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ [JamHub] Metered.ca API returned ${response.status}: ${errorText}`);
+        return res.status(response.status).json({ error: 'Metered API error', details: errorText });
+    }
+
     const iceServers = await response.json();
 
     if (!Array.isArray(iceServers)) {
         console.error('❌ [JamHub] Dynamic ICE servers response is not an array:', iceServers);
-        throw new Error('Invalid ICE servers response');
+        return res.status(500).json({ error: 'Invalid response from Metered API' });
     }
 
+    console.log(`✅ [JamHub] Successfully loaded ${iceServers.length} ICE servers`);
     res.json(iceServers);
   } catch (err) {
-    console.error('❌ [JamHub] Failed to fetch TURN credentials:', err.message);
-    res.status(500).json([{ urls: 'stun:stun.l.google.com:19302' }]);
+    console.error('❌ [JamHub] Internal server error in /api/ice-servers:', err.message);
+    res.status(500).json({ error: 'Internal server error', message: err.message });
   }
 });
 
