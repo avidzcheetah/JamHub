@@ -2,173 +2,76 @@
 
 **Real-time video collaboration. Zero latency.**
 
-JamHub is a WebRTC-powered video conferencing app with screen sharing, in-room chat, and a sleek glassmorphism UI. Built with vanilla JS on the frontend and Node.js + Socket.IO on the backend.
+🚀 **Status:** Live & Deployed on [Render](https://render.com)
+  
+JamHub is a state-of-the-art, WebRTC-powered video conferencing application. It features real-time peer-to-peer audio and video streaming, dynamic screen sharing, robust in-room text chat, and a premium "Glassmorphism" UI design. Built purely with Vanilla Web Technologies on the frontend and Node.js with Socket.IO on the backend, JamHub requires zero third-party UI frameworks while delivering a highly polished, responsive experience for desktop and mobile.
 
 ![JamHub Lobby](https://raw.githubusercontent.com/avidzcheetah/JamHub/main/client/screenshots/lobby.png)
 
 ---
 
-## ✨ Features
+## ✨ Comprehensive Feature Set
 
-- 🎥 **Peer-to-peer video & audio** — WebRTC with STUN/TURN for NAT traversal
-- 🖥️ **Screen sharing** — One-click screen share with automatic track replacement
-- 💬 **In-room chat** — Real-time messaging with slide-in panel
-- 👤 **Display names & host system** — Automatic host assignment with transfer on leave
-- 🎲 **Random room IDs** — Music-themed names like `drift-mix-752`
-- 📷 **Camera preview** — Preview your camera/mic before joining
-- 🔒 **HTTPS mode** — Self-signed cert for LAN camera access
-- 🌐 **Deploy anywhere** — Works on Render, Railway, Fly.io, etc.
+### 1. Peer-to-Peer Video & Audio (WebRTC)
+Utilizes the WebRTC API to establish direct connections between users. This ensures ultra-low latency media streaming and reduces server bandwidth load. Connection reliability across restrictive firewalls and NATs is maintained via integrated STUN and TURN servers (provided by Metered.ca).
 
----
+### 2. Dynamic Video Layout Engine
+The application intelligently scales how users are displayed on screen. As participants join and leave the room, the CSS Grid engine automatically recalculates available viewport space, assigning equal-sized responsive video boxes to all participants without vertical scrolling.
 
-## 📁 Project Structure
+### 3. Screen Sharing
+Supports seamless 1-click screen sharing. The application leverages `navigator.mediaDevices.getDisplayMedia()` to capture your screen, instantly replacing your active camera `MediaStreamTrack` across all remote peer connections without dropping the call. 
 
-```
-JamHub/
-├── client/                 # Frontend (vanilla HTML/CSS/JS)
-│   ├── index.html          # 3-page UI: lobby → preview → conference
-│   ├── app.js              # WebRTC, Socket.IO, particle animation
-│   └── styles.css          # Dark purple glassmorphism theme
-├── server/                 # Backend (Node.js)
-│   ├── server.js           # Express + Socket.IO signaling server
-│   ├── start-https.js      # HTTPS launcher (self-signed cert)
-│   ├── package.json        # Dependencies
-│   └── package-lock.json
-└── .gitignore
-```
+### 4. Interactive In-Room Chat
+Features a slide-in glassmorphism chat panel. Participants can text in real-time, backed by Socket.IO events. The UI proactively alerts users of unread messages via a visual badge indicator on the floating control bar when the chat is closed.
 
----
+### 5. Premium "Glassmorphism" UI/UX
+The application abandons traditional flat design for a deeply immersive, dark-purple aesthetic:
+- Blurred transparency (`backdrop-filter`) over animated backgrounds.
+- Floating circular control overlays with SVG glow effects.
+- Unified 3-page flow: Lobby → Preview (Mic/Cam check) → Conference.
 
-## 🚀 Quick Start (Local)
+### 6. Animated Interactive Particle Background
+The Lobby and Preview pages feature a custom HTML5 `<canvas>` simulation. It renders a floating constellation of purple particles that respond to user mouse movements by applying repulsive physics.
 
-### Prerequisites
-- **Node.js** v16+
-- A modern browser (Chrome, Edge, Firefox)
-
-### Steps
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/avidzcheetah/JamHub.git
-cd JamHub
-
-# 2. Install dependencies
-cd server
-npm install
-
-# 3. Start the server
-npm start
-```
-
-Open **http://localhost:10000** in your browser.
-
-### HTTPS Mode (for LAN access)
-
-Browsers block camera/mic on non-localhost HTTP. For testing on other devices on your network:
-
-```bash
-npm run start:https
-```
-
-Then open `https://<YOUR-PC-IP>:10000` and accept the self-signed certificate warning.
+### 7. Core Meeting Mechanics
+- **Name Persistence:** Users enter their custom "Display Name" in the lobby, which accurately renders as name tags over their video streams. 
+- **Randomize Rooms:** ⚡ Auto-generator for music-themed room IDs (e.g., `drift-mix-752`).
+- **Host Delegation:** The first person to join a room is marked as Host. Upon their departure, host permissions are automatically delegated to the next oldest peer.
 
 ---
 
-## 🌍 Free Deployment Guide
+## 🛠️ Technology Stack & Architecture
 
-### Option 1: Render (Recommended — Easiest)
+### Frontend (Client Tier)
+- **HTML5 & Vanilla CSS3**: Uses CSS Variables (`var()`), Flexbox, and complex CSS Grid behaviors to handle dynamic viewport scaling.
+- **Vanilla JavaScript (ES6+)**: Handles all presentation logic, canvas animations, and WebRTC lifecycle events without UI wrappers like React or Vue.
+- **MediaDevices API**: Accesses local hardware (Cameras, Microphones, Display Surfaces).
+- **RTCPeerConnection API**: The browser-native engine that encapsulates SDP (Session Description Protocol) negotiation and ICE (Interactive Connectivity Establishment) candidate exchange.
+- **Socket.IO Client**: Establishes the WebSocket connection used uniquely as the signaling bridge.
 
-[Render](https://render.com) offers a free tier that can host JamHub with zero config.
+### Backend (Signaling Tier)
+- **Node.js**: The asynchronous runtime powering the signaling server.
+- **Express.js**: Serves the static client assets (`index.html`, `styles.css`, `app.js`).
+- **Socket.IO**: A real-time, bi-directional event engine. It orchestrates "Rooms", acts as the intermediary to forward SDP offers/answers between specific clients, and relays real-time chat messages. Note: *Media streams do NOT pass through this server.*
+- **Self-signed TLS**: A built-in HTTPS development server using the `selfsigned` library, allowing LAN devices to test hardware constraints which normally block microphone/camera access on unencrypted connections.
 
-**Steps:**
-
-1. **Sign up** at [render.com](https://render.com) (GitHub login works)
-
-2. **New → Web Service** → Connect your GitHub repo `avidzcheetah/JamHub`
-
-3. **Configure the service:**
-
-   | Setting | Value |
-   |---|---|
-   | **Name** | `jamhub` |
-   | **Region** | Pick closest to you |
-   | **Runtime** | `Node` |
-   | **Root Directory** | `server` |
-   | **Build Command** | `npm install` |
-   | **Start Command** | `npm start` |
-   | **Instance Type** | `Free` |
-
-4. Click **Deploy Web Service**
-
-5. Your app will be live at `https://jamhub.onrender.com` (or similar)
-
-> ⚠️ Free tier sleeps after 15 min of inactivity. First request after sleep takes ~30s.
+### Infrastructure & Deployment
+- **STUN & TURN Network**: Powered by `Metered.ca` to guarantee calls connect globally, regardless of symmetric NATs or restrictive corporate firewalls.
+- **Hosting Platform**: Successfully deployed on **Render** utilizing their Node.js Native Runtime environment. Render's built-in SSL termination fulfills the browser's requirement for Secure Contexts (HTTPS), allowing the `getUserMedia` API to function securely over the internet.
 
 ---
 
-### Option 2: Railway
+## 📁 System Architecture & Data Flow
 
-[Railway](https://railway.app) offers a free trial with $5 credit/month.
-
-1. Sign up at [railway.app](https://railway.app)
-2. **New Project → Deploy from GitHub Repo** → Select `JamHub`
-3. Go to **Settings:**
-   - **Root Directory:** `server`
-   - **Start Command:** `npm start`
-4. Railway auto-detects Node.js and deploys
-5. Go to **Settings → Networking → Generate Domain** for a public URL
+1. **Lobby Entry:** The user chooses a display name and room ID. 
+2. **Preview Phase:** The browser requests hardware access (`getUserMedia`). The local video stream is painted to a preview `<video>` tag for validation.
+3. **Signaling (Socket.IO):** Upon hitting "Join Session", the client emits a `join-room` event to the Node.js server. 
+4. **SDP Exchange:** The Node.js server informs existing room participants. The `RTCPeerConnection` creates an *Offer*, sending it via Socket.IO to the new user. The new user processes this Offer and returns an *Answer*.
+5. **ICE Traversal:** Simultaneously, browsers gather network routes (ICE Candidates) from STUN/TURN servers. These candidates are traded over Socket.IO.
+6. **P2P Establishment:** Once negotiation concludes, the browsers establish direct UDP/TCP tunnels. The local `MediaStream` is injected into the remote peer's `<video>` elements on the DOM, completely bypassing the backend.
 
 ---
 
-### Option 3: Fly.io
+## 🛡️ License
 
-[Fly.io](https://fly.io) offers a free tier with 3 shared VMs.
-
-1. Install the CLI: `irm https://fly.io/install.ps1 | iex`
-2. Sign up: `fly auth signup`
-3. From the `server/` directory:
-
-```bash
-fly launch --name jamhub
-```
-
-4. When prompted, choose the free plan and closest region
-5. Deploy: `fly deploy`
-
----
-
-### After Deployment
-
-Once deployed, your app is accessible at the URL provided by the platform. Share the link — anyone can join a room by entering a name and room ID. No signups needed.
-
-**Testing multi-user:**
-- Open the deployed URL on **two different devices/browsers**
-- Enter the **same Room ID** on both
-- You'll get a live video call with chat
-
----
-
-## ⚙️ Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `10000` | Server port (auto-set by most platforms) |
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | HTML, CSS, Vanilla JavaScript |
-| Backend | Node.js, Express 5 |
-| Real-time | Socket.IO 4 |
-| Video | WebRTC (peer-to-peer) |
-| TURN/STUN | Metered.ca relay servers |
-| Design | Glassmorphism, CSS animations |
-
----
-
-## 📄 License
-
-ISC
+MIT License - Copyright (c) 2026 JamHub Contributors. 
