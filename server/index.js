@@ -8,7 +8,37 @@ app.use(cors({
   origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
 }));
 
+const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+
 const server = http.createServer(app);
+
+// Get dynamic ICE servers from Metered.ca
+app.get('/api/ice-servers', async (_req, res) => {
+  try {
+    const apiKey = process.env.METERED_API_KEY;
+    const appName = process.env.METERED_APP_NAME;
+
+    if (!apiKey || !appName) {
+      console.warn('⚠️ Metered API credentials missing. Falling back to STUN only.');
+      return res.json([
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+      ]);
+    }
+
+    const response = await fetch(
+      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
+    );
+    const iceServers = await response.json();
+    res.json(iceServers);
+  } catch (err) {
+    console.error('Failed to fetch TURN credentials:', err);
+    res.status(500).json([{ urls: 'stun:stun.l.google.com:19302' }]);
+  }
+});
+
 const io = new Server(server, {
   cors: {
     origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
