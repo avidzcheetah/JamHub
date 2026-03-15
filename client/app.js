@@ -605,12 +605,15 @@ function getOrCreatePeer(remoteId) {
             statusEl.textContent = "Failed - Retrying...";
             setTimeout(() => {
                 removePeer(remoteId);
-                startCall(remoteId);
+                // Only one side reconnects to avoid offer collision
+                if (socket.id > remoteId) {
+                    startCall(remoteId);
+                }
             }, 2000);
         }
     };
 
-    entry = { pc, pendingCandidates, videoEl, statusEl, box };
+    entry = { pc, pendingCandidates, videoEl, statusEl, box, isCalling: false };
     peerMap.set(remoteId, entry);
     updateParticipantCount();
     return entry;
@@ -634,17 +637,26 @@ async function drainPendingIceCandidates(entry) {
 
 async function startCall(remoteId) {
     const entry = getOrCreatePeer(remoteId);
+    if (entry.isCalling || entry.pc.signalingState !== "stable") return;
+    entry.isCalling = true;
     try {
         const offer = await entry.pc.createOffer();
+        if (entry.pc.signalingState !== "stable") return;
         await entry.pc.setLocalDescription(offer);
         socket.emit("offer", { room: currentRoomId, to: remoteId, offer });
     } catch (err) {
         console.error("createOffer error:", err);
+    } finally {
+        entry.isCalling = false;
     }
 }
 
 async function handleOffer(fromId, offer) {
     const entry = getOrCreatePeer(fromId);
+    if (entry.pc.signalingState !== "stable") {
+        console.warn("Ignoring offer in state:", entry.pc.signalingState);
+        return;
+    }
     try {
         await entry.pc.setRemoteDescription(new RTCSessionDescription(offer));
         await drainPendingIceCandidates(entry);
@@ -659,6 +671,10 @@ async function handleOffer(fromId, offer) {
 async function handleAnswer(fromId, answer) {
     const entry = peerMap.get(fromId);
     if (!entry) return;
+    if (entry.pc.signalingState !== "have-local-offer") {
+        console.warn("Ignoring answer in state:", entry.pc.signalingState);
+        return;
+    }
     try {
         await entry.pc.setRemoteDescription(new RTCSessionDescription(answer));
         await drainPendingIceCandidates(entry);
