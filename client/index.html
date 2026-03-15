@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JamHub — Real-time Collaboration</title>
+    <meta name="description" content="JamHub: Real-time video collaboration with zero latency. Join sessions, share screens, and chat seamlessly.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Particle Animation Canvas -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- ==================== PAGE 1: LOBBY ==================== -->
+    <div id="lobbyPage" class="page lobby-page">
+        <div class="lobby-card glass-card">
+            <!-- Brand Header -->
+            <div class="lobby-header">
+                <div class="brand-row">
+                    <svg class="brand-guitar" viewBox="0 0 64 64" width="48" height="48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="guitarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#f87171"/>
+                                <stop offset="100%" style="stop-color:#c084fc"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- Guitar body -->
+                        <ellipse cx="22" cy="40" rx="14" ry="16" fill="url(#guitarGrad)" opacity="0.9"/>
+                        <ellipse cx="22" cy="40" rx="5" ry="5" fill="#0a0a1a"/>
+                        <!-- Guitar neck -->
+                        <rect x="34" y="14" width="5" height="30" rx="2" fill="url(#guitarGrad)" opacity="0.85"/>
+                        <!-- Headstock -->
+                        <rect x="32" y="8" width="9" height="8" rx="3" fill="url(#guitarGrad)" opacity="0.9"/>
+                        <!-- Tuning pegs -->
+                        <circle cx="34" cy="10" r="1.5" fill="#fbbf24"/>
+                        <circle cx="34" cy="14" r="1.5" fill="#fbbf24"/>
+                        <circle cx="40" cy="10" r="1.5" fill="#fbbf24"/>
+                        <circle cx="40" cy="14" r="1.5" fill="#fbbf24"/>
+                        <!-- Strings -->
+                        <line x1="36" y1="16" x2="18" y2="52" stroke="#fbbf24" stroke-width="0.5" opacity="0.5"/>
+                        <line x1="37.5" y1="16" x2="22" y2="52" stroke="#fbbf24" stroke-width="0.5" opacity="0.5"/>
+                        <line x1="39" y1="16" x2="26" y2="52" stroke="#fbbf24" stroke-width="0.5" opacity="0.5"/>
+                    </svg>
+                    <div class="brand-text">
+                        <h1 class="brand-name">JamHub</h1>
+                        <p class="brand-tagline">Real-time collaboration. Zero latency.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="section-divider">
+                <span>ENTER A SESSION</span>
+            </div>
+
+            <!-- Form -->
+            <form id="lobbyForm" class="lobby-form" autocomplete="off">
+                <div class="form-group">
+                    <label for="nameInput" class="form-label">DISPLAY NAME</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </span>
+                        <input type="text" id="nameInput" class="form-input" placeholder="How should we call you?" maxlength="32" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="roomInput" class="form-label">ROOM ID</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon input-icon-hash">#</span>
+                        <input type="text" id="roomInput" class="form-input" placeholder="e.g. blues-jam-42" maxlength="32" required>
+                        <button type="button" id="randomRoomBtn" class="btn-random" title="Generate random room ID">⚡</button>
+                    </div>
+                </div>
+                <button type="submit" id="continueBtn" class="btn btn-continue">Continue →</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 2: PREVIEW ==================== -->
+    <div id="previewPage" class="page preview-page" style="display: none;">
+        <div class="preview-card glass-card">
+            <h2 class="preview-title">Ready to join?</h2>
+            <p class="preview-room" id="previewRoomDisplay">Room: <strong>#room-name</strong></p>
+
+            <!-- Camera Preview -->
+            <div class="preview-video-wrap">
+                <video id="previewVideo" autoplay playsinline muted></video>
+                <div id="previewCameraOff" class="camera-off-overlay" style="display: none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                        <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h6l2 3h4a2 2 0 0 1 2 2v11z"/>
+                    </svg>
+                    <span>CAMERA OFF</span>
+                </div>
+                <div class="preview-name" id="previewNameDisplay">You</div>
+            </div>
+
+            <!-- Mic / Camera toggles -->
+            <div class="preview-toggles">
+                <div class="toggle-group">
+                    <button type="button" id="previewMicBtn" class="btn-toggle active" title="Toggle microphone">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+                    </button>
+                    <span class="toggle-label" id="previewMicLabel">MIC ON</span>
+                </div>
+                <div class="toggle-group">
+                    <button type="button" id="previewCamBtn" class="btn-toggle active" title="Toggle camera">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    </button>
+                    <span class="toggle-label" id="previewCamLabel">CAMERA ON</span>
+                </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="preview-actions">
+                <button type="button" id="backBtn" class="btn btn-back">← Back</button>
+                <button type="button" id="joinSessionBtn" class="btn btn-join-session">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    Join Session
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PAGE 3: CONFERENCE ==================== -->
+    <div id="conferencePage" class="page conference-page" style="display: none;">
+        <!-- Top Header -->
+        <header class="conf-header">
+            <div class="conf-header-left">
+                <svg class="conf-logo" viewBox="0 0 64 64" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="confGuitarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#f87171"/>
+                            <stop offset="100%" style="stop-color:#c084fc"/>
+                        </linearGradient>
+                    </defs>
+                    <ellipse cx="22" cy="40" rx="14" ry="16" fill="url(#confGuitarGrad)" opacity="0.9"/>
+                    <ellipse cx="22" cy="40" rx="5" ry="5" fill="#0f0f23"/>
+                    <rect x="34" y="14" width="5" height="30" rx="2" fill="url(#confGuitarGrad)" opacity="0.85"/>
+                    <rect x="32" y="8" width="9" height="8" rx="3" fill="url(#confGuitarGrad)" opacity="0.9"/>
+                </svg>
+                <span class="conf-brand">JamHub</span>
+            </div>
+            <div class="conf-header-center">
+                <span class="participant-badge" id="participantBadge">
+                    <span class="badge-dot"></span>
+                    <span id="participantCount">1 participant</span>
+                </span>
+            </div>
+            <div class="conf-header-right">
+                <span class="room-tag" id="roomTag">#room-id</span>
+            </div>
+        </header>
+
+        <!-- Video Area -->
+        <div class="conf-video-area">
+            <!-- Local Video (main) -->
+            <div class="conf-video-main" id="localVideoContainer">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div id="cameraOffOverlay" class="camera-off-overlay" style="display: none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                        <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h6l2 3h4a2 2 0 0 1 2 2v11z"/>
+                    </svg>
+                    <span>CAMERA OFF</span>
+                </div>
+                <div class="video-name-tag" id="localDisplayName">You</div>
+            </div>
+
+            <!-- Remote Videos Grid -->
+            <div id="remoteVideosContainer" class="conf-remote-videos"></div>
+        </div>
+
+        <!-- Bottom Floating Controls -->
+        <div class="conf-controls">
+            <button type="button" id="muteBtn" class="ctrl-btn ctrl-mic" title="Mute / Unmute">
+                <svg class="ctrl-icon icon-mic-on" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+                <svg class="ctrl-icon icon-mic-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/></svg>
+            </button>
+            <button type="button" id="cameraBtn" class="ctrl-btn ctrl-camera" title="Camera on / off">
+                <svg class="ctrl-icon icon-camera-on" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                <svg class="ctrl-icon icon-camera-off" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><line x1="1" y1="1" x2="23" y2="23"/><path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h6l2 3h4a2 2 0 0 1 2 2v11z"/></svg>
+            </button>
+            <button type="button" id="endCallBtn" class="ctrl-btn ctrl-end" title="Leave call">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+            </button>
+            <button type="button" id="shareScreenBtn" class="ctrl-btn ctrl-share" title="Share screen">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </button>
+            <button type="button" id="chatToggleBtn" class="ctrl-btn ctrl-chat" title="Toggle chat">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="chat-unread" id="chatUnread" style="display:none"></span>
+            </button>
+        </div>
+
+        <!-- Chat Panel (slide-in) -->
+        <aside id="chatPanel" class="chat-panel">
+            <div class="chat-panel-header">
+                <h3 class="chat-panel-title">Chat</h3>
+                <button type="button" id="chatCloseBtn" class="chat-close-btn" title="Close chat">✕</button>
+            </div>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-wrap">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Type a message…" maxlength="2000">
+                <button type="button" id="sendBtn" class="btn-chat-send" title="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
