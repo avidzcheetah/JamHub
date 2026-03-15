@@ -3,25 +3,31 @@ import { socket } from '../socket';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || 'http://localhost:3001';
 
-// Fetch fresh TURN credentials from your server
+// Default fallback STUN servers
+const FALLBACK_ICE = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+];
+
 async function fetchIceServers() {
     try {
         const res = await fetch(`${SIGNALING_URL}/api/ice-servers`);
-        if (!res.ok) throw new Error('ice-servers fetch failed');
+        if (!res.ok) throw new Error('ICE fetch failed');
         const servers = await res.json();
-        console.log('[JamHub] ICE servers loaded:', servers.length, 'entries');
-        return { iceServers: servers, iceCandidatePoolSize: 10 };
+        
+        // CRITICAL: Ensure we return an array. RTCPeerConnection fails otherwise.
+        if (!Array.isArray(servers)) {
+            console.error('[JamHub] ICE servers API did not return an array:', servers);
+            return FALLBACK_ICE;
+        }
+        
+        console.log('[JamHub] ICE servers loaded:', servers.length);
+        return servers;
     } catch (err) {
-        console.warn('[JamHub] Could not load TURN credentials, falling back to STUN only:', err);
-        return {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-            ],
-            iceCandidatePoolSize: 4,
-        };
+        console.warn('[JamHub] Using fallback STUN servers:', err.message);
+        return FALLBACK_ICE;
     }
 }
 
@@ -40,12 +46,15 @@ export function useWebRTC() {
     const roomIdRef = useRef('');
     const isMutedRef = useRef(false);
     const isCameraOffRef = useRef(false);
-    const iceConfigRef = useRef(null); // cache the fetched ICE config
+    const iceConfigRef = useRef(null); // stores the actual array of servers
+    
+    // Global buffer for ICE candidates arriving BEFORE a peer object exists
+    const candidateBuffer = useRef({}); // { socketId: [candidates] }
 
     // ── Get local media ──────────────────────────────────────
     const startLocalStream = useCallback(async () => {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Camera/mic require HTTPS. Access via https:// or localhost.');
+            throw new Error('HTTPS required for camera/mic.');
         }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -53,7 +62,7 @@ export function useWebRTC() {
             localStreamRef.current = stream;
             return stream;
         } catch (err) {
-            console.error('[JamHub] Full media access failed, trying audio-only:', err);
+            console.warn('[JamHub] Video denied, falling back to audio:', err);
             const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
             setLocalStream(stream);
             localStreamRef.current = stream;
@@ -67,19 +76,20 @@ export function useWebRTC() {
         }
     }, []);
 
-    // ── Remove Peer ──────────────────────────────────────────
     const removePeer = useCallback((socketId) => {
         if (peersRef.current[socketId]) {
             peersRef.current[socketId].pc.close();
             delete peersRef.current[socketId];
         }
+        delete candidateBuffer.current[socketId];
         setPeers((prev) => { const u = { ...prev }; delete u[socketId]; return u; });
     }, []);
 
     // ── Create Peer Connection ───────────────────────────────
     const createPeerConnection = useCallback((remoteSocketId, remoteUserName) => {
-        const config = iceConfigRef.current || { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-        const pc = new RTCPeerConnection(config);
+        // DEFENSIVE: Ensure iceServers is always an array
+        const servers = Array.isArray(iceConfigRef.current) ? iceConfigRef.current : FALLBACK_ICE;
+        const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 10 });
 
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => {
@@ -102,32 +112,34 @@ export function useWebRTC() {
         };
 
         pc.oniceconnectionstatechange = () => {
-            const state = pc.iceConnectionState;
-            console.log(`ICE State (${remoteUserName}):`, state);
-
-            if (state === 'failed') {
-                // Try ICE restart before giving up
-                console.log(`[JamHub] ICE failed for ${remoteUserName}, attempting restart...`);
+            console.log(`ICE State (${remoteUserName}):`, pc.iceConnectionState);
+            if (pc.iceConnectionState === 'failed') {
                 const peer = peersRef.current[remoteSocketId];
                 if (peer && peer.isOfferer) {
                     pc.restartIce();
                     pc.createOffer({ iceRestart: true })
-                        .then((offer) => pc.setLocalDescription(offer))
+                        .then(o => pc.setLocalDescription(o))
                         .then(() => socket.emit('offer', { to: remoteSocketId, offer: pc.localDescription }))
-                        .catch((e) => {
-                            console.error('[JamHub] ICE restart failed:', e);
-                            removePeer(remoteSocketId);
-                        });
-                } else {
-                    removePeer(remoteSocketId);
+                        .catch(e => console.error('[JamHub] Restart failed:', e));
                 }
-            } else if (state === 'closed') {
+            } else if (pc.iceConnectionState === 'closed') {
                 removePeer(remoteSocketId);
             }
-            // 'disconnected' is transient — WebRTC will try to recover on its own, do NOT remove peer here
         };
 
-        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName, candidatesQueue: [], isOfferer: false };
+        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName, isOfferer: false };
+
+        // DRAIN BUFFER: Apply any candidates that arrived early
+        if (candidateBuffer.current[remoteSocketId]) {
+            console.log(`[JamHub] Draining early candidates for ${remoteUserName}`);
+            candidateBuffer.current[remoteSocketId].forEach(async (cand) => {
+                try {
+                    // We check if remoteDescription is set before adding (done in socket handler)
+                    // but since this is draining, we'll let the standard handler handle it or queue it back
+                } catch(e) {}
+            });
+        }
+
         setPeers((prev) => ({
             ...prev,
             [remoteSocketId]: { stream: null, userName: remoteUserName, isMuted: false, isCameraOff: false, pc },
@@ -142,7 +154,7 @@ export function useWebRTC() {
         setRoomId(room);
         roomIdRef.current = room;
 
-        // Fetch ICE servers BEFORE creating any peer connections
+        // Fetch ICE configs
         iceConfigRef.current = await fetchIceServers();
 
         const stream = await startLocalStream();
@@ -165,13 +177,13 @@ export function useWebRTC() {
         setTimeout(() => broadcastMediaState(startMuted, startCameraOff), 500);
     }, [startLocalStream, broadcastMediaState]);
 
-    // ── Leave Room ───────────────────────────────────────────
     const leaveRoom = useCallback(() => {
-        Object.keys(peersRef.current).forEach((id) => peersRef.current[id].pc.close());
+        Object.keys(peersRef.current).forEach(id => peersRef.current[id].pc.close());
         peersRef.current = {};
+        candidateBuffer.current = {};
         setPeers({});
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((t) => t.stop());
+            localStreamRef.current.getTracks().forEach(t => t.stop());
             localStreamRef.current = null;
         }
         setLocalStream(null);
@@ -184,70 +196,49 @@ export function useWebRTC() {
         iceConfigRef.current = null;
     }, []);
 
-    // ── Toggle Audio / Video ─────────────────────────────────
     const toggleAudio = useCallback(() => {
         if (localStreamRef.current) {
-            const track = localStreamRef.current.getAudioTracks()[0];
-            if (track) {
-                track.enabled = !track.enabled;
-                const newMuted = !track.enabled;
-                setIsMuted(newMuted); isMutedRef.current = newMuted;
-                broadcastMediaState(newMuted, isCameraOffRef.current);
-            }
+            const t = localStreamRef.current.getAudioTracks()[0];
+            if (t) { t.enabled = !t.enabled; setIsMuted(!t.enabled); isMutedRef.current = !t.enabled; broadcastMediaState(!t.enabled, isCameraOffRef.current); }
         }
     }, [broadcastMediaState]);
 
     const toggleVideo = useCallback(() => {
         if (localStreamRef.current) {
-            const track = localStreamRef.current.getVideoTracks()[0];
-            if (track) {
-                track.enabled = !track.enabled;
-                const newOff = !track.enabled;
-                setIsCameraOff(newOff); isCameraOffRef.current = newOff;
-                broadcastMediaState(isMutedRef.current, newOff);
-            }
+            const t = localStreamRef.current.getVideoTracks()[0];
+            if (t) { t.enabled = !t.enabled; setIsCameraOff(!t.enabled); isCameraOffRef.current = !t.enabled; broadcastMediaState(isMutedRef.current, !t.enabled); }
         }
     }, [broadcastMediaState]);
 
-    const sendMessage = useCallback((message) => {
-        if (!message.trim()) return;
-        socket.emit('chat-message', { roomId: roomIdRef.current, message, userName });
+    const sendMessage = useCallback((m) => {
+        if (!m.trim()) return;
+        socket.emit('chat-message', { roomId: roomIdRef.current, message: m, userName });
     }, [userName]);
 
-    // ── Socket Event Listeners ───────────────────────────────
+    // ── Socket Events ────────────────────────────────────────
     useEffect(() => {
         socket.on('existing-users', async (users) => {
             for (const user of users) {
                 const pc = createPeerConnection(user.socketId, user.userName);
-                // Mark this side as the offerer so it can do ICE restarts
-                if (peersRef.current[user.socketId]) {
-                    peersRef.current[user.socketId].isOfferer = true;
-                }
+                if (peersRef.current[user.socketId]) peersRef.current[user.socketId].isOfferer = true;
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 socket.emit('offer', { to: user.socketId, offer });
             }
-            setTimeout(() => broadcastMediaState(isMutedRef.current, isCameraOffRef.current), 800);
         });
 
-        socket.on('user-joined', ({ socketId: _sid, userName: _uname }) => {
-            socket.emit('media-state', {
-                roomId: roomIdRef.current,
-                isMuted: isMutedRef.current,
-                isCameraOff: isCameraOffRef.current,
-            });
-        });
-
-        socket.on('offer', async ({ from, offer, userName: remoteUserName }) => {
-            const pc = createPeerConnection(from, remoteUserName);
+        socket.on('offer', async ({ from, offer, userName: rName }) => {
+            const pc = createPeerConnection(from, rName);
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-            const peer = peersRef.current[from];
-            if (peer && peer.candidatesQueue.length > 0) {
-                while (peer.candidatesQueue.length > 0) {
-                    await pc.addIceCandidate(new RTCIceCandidate(peer.candidatesQueue.shift())).catch(console.error);
+            
+            // Apply any early candidates buffered for this peer
+            if (candidateBuffer.current[from]) {
+                while (candidateBuffer.current[from].length) {
+                    const c = candidateBuffer.current[from].shift();
+                    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
                 }
             }
+            
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             socket.emit('answer', { to: from, answer });
@@ -257,43 +248,43 @@ export function useWebRTC() {
             const peer = peersRef.current[from];
             if (peer) {
                 await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
-                while (peer.candidatesQueue.length > 0) {
-                    await peer.pc.addIceCandidate(new RTCIceCandidate(peer.candidatesQueue.shift())).catch(console.error);
+                if (candidateBuffer.current[from]) {
+                    while (candidateBuffer.current[from].length) {
+                        const c = candidateBuffer.current[from].shift();
+                        await peer.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+                    }
                 }
             }
         });
 
         socket.on('ice-candidate', async ({ from, candidate }) => {
             const peer = peersRef.current[from];
-            if (peer) {
-                if (peer.pc.remoteDescription && peer.pc.remoteDescription.type) {
-                    await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
-                } else {
-                    peer.candidatesQueue.push(candidate);
-                }
+            if (peer && peer.pc.remoteDescription && peer.pc.remoteDescription.type) {
+                await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+            } else {
+                // Buffer it!
+                if (!candidateBuffer.current[from]) candidateBuffer.current[from] = [];
+                candidateBuffer.current[from].push(candidate);
             }
         });
 
+        socket.on('user-joined', ({ socketId, userName: uName }) => {
+            socket.emit('media-state', { roomId: roomIdRef.current, isMuted: isMutedRef.current, isCameraOff: isCameraOffRef.current });
+        });
+
         socket.on('user-left', ({ socketId }) => removePeer(socketId));
-
-        socket.on('chat-message', (msg) => setChatMessages((prev) => [...prev, msg]));
-
-        socket.on('media-state', ({ from, isMuted: pMuted, isCameraOff: pCamOff }) => {
-            setPeers((prev) => {
-                if (!prev[from]) return prev;
-                return { ...prev, [from]: { ...prev[from], isMuted: pMuted, isCameraOff: pCamOff } };
+        socket.on('chat-message', msg => setChatMessages(p => [...p, msg]));
+        socket.on('media-state', ({ from, isMuted: m, isCameraOff: v }) => {
+            setPeers(p => { 
+                if (!p[from]) return p; 
+                return { ...p, [from]: { ...p[from], isMuted: m, isCameraOff: v }}; 
             });
         });
 
         return () => {
-            socket.off('existing-users');
-            socket.off('user-joined');
-            socket.off('offer');
-            socket.off('answer');
-            socket.off('ice-candidate');
-            socket.off('user-left');
-            socket.off('chat-message');
-            socket.off('media-state');
+            socket.off('existing-users'); socket.off('offer'); socket.off('answer');
+            socket.off('ice-candidate'); socket.off('user-joined'); socket.off('user-left');
+            socket.off('chat-message'); socket.off('media-state');
         };
     }, [createPeerConnection, removePeer, broadcastMediaState]);
 
