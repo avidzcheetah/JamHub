@@ -90,15 +90,21 @@ io.on("connection", (socket) => {
     room.set(socket.id, { userName, socketId: socket.id });
 
     // Tell the new user about everyone already in the room
-    const existingUsers = [];
+    const existingPeers = [];
     room.forEach((user, id) => {
-      if (id !== socket.id) existingUsers.push(user);
+      if (id !== socket.id) {
+        existingPeers.push({
+          id: user.socketId,
+          userName: user.userName,
+          isHost: false
+        });
+      }
     });
-    socket.emit("existing-users", existingUsers);
+    socket.emit("existing-peers", existingPeers);
 
     // Tell everyone else about the new user
     socket.to(roomId).emit("user-joined", {
-      socketId: socket.id,
+      id: socket.id,
       userName,
     });
 
@@ -110,15 +116,15 @@ io.on("connection", (socket) => {
 
   // ── WebRTC Signaling ────────────────────────────────────
   socket.on("offer", ({ to, offer }) => {
-    io.to(to).emit("offer", { from: socket.id, offer, userName: socket.userName });
+    socket.to(to).emit("offer", { from: socket.id, offer, userName: socket.userName });
   });
 
   socket.on("answer", ({ to, answer }) => {
-    io.to(to).emit("answer", { from: socket.id, answer });
+    socket.to(to).emit("answer", { from: socket.id, answer });
   });
 
   socket.on("ice-candidate", ({ to, candidate }) => {
-    io.to(to).emit("ice-candidate", { from: socket.id, candidate });
+    socket.to(to).emit("ice-candidate", { from: socket.id, candidate });
   });
 
   // ── Media state (muted / camera off) ────────────────────
@@ -135,7 +141,7 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("chat-message", {
       message,
       userName,
-      senderId: socket.id,
+      from: socket.id,
       timestamp: Date.now(),
     });
   });
@@ -149,7 +155,7 @@ io.on("connection", (socket) => {
       if (room.size === 0) {
         rooms.delete(socket.roomId);
       }
-      socket.to(socket.roomId).emit("user-left", { socketId: socket.id });
+      socket.to(socket.roomId).emit("user-left", { id: socket.id });
     }
   });
 });

@@ -87,11 +87,42 @@ export function useWebRTC() {
         setPeers((prev) => { const u = { ...prev }; delete u[socketId]; return u; });
     }, []);
 
+    const drainPendingIceCandidates = useCallback(async (remoteId) => {
+        const peer = peersRef.current[remoteId];
+        if (!peer || !candidateBuffer.current[remoteId]) return;
+        
+        while (candidateBuffer.current[remoteId].length) {
+            const cand = candidateBuffer.current[remoteId].shift();
+            try {
+                await peer.pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (err) {
+                console.error(`[JamHub] Error adding buffered candidate for ${remoteId}:`, err);
+            }
+        }
+    }, []);
+
+    const startCall = useCallback(async (remoteId, remoteUserName) => {
+        const peer = peersRef.current[remoteId];
+        if (!peer) return;
+        try {
+            peer.isOfferer = true;
+            const offer = await peer.pc.createOffer();
+            await peer.pc.setLocalDescription(offer);
+            socket.emit('offer', { to: remoteId, offer });
+        } catch (err) {
+            console.error(`[JamHub] Error creating offer for ${remoteId}:`, err);
+        }
+    }, []);
+
     // ── Create Peer Connection ───────────────────────────────
     const createPeerConnection = useCallback((remoteSocketId, remoteUserName) => {
         // DEFENSIVE: Ensure iceServers is always an array
         const servers = Array.isArray(iceConfigRef.current) ? iceConfigRef.current : FALLBACK_ICE;
-        const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 10 });
+        const pc = new RTCPeerConnection({ 
+            iceServers: servers, 
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all'
+        });
 
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach((track) => {
@@ -116,31 +147,33 @@ export function useWebRTC() {
         pc.oniceconnectionstatechange = () => {
             console.log(`ICE State (${remoteUserName}):`, pc.iceConnectionState);
             if (pc.iceConnectionState === 'failed') {
+                console.warn(`[JamHub] ICE failed for ${remoteUserName}, restarting...`);
+                pc.restartIce();
+                // If we were the offerer, we should re-negotiate
                 const peer = peersRef.current[remoteSocketId];
                 if (peer && peer.isOfferer) {
-                    pc.restartIce();
-                    pc.createOffer({ iceRestart: true })
-                        .then(o => pc.setLocalDescription(o))
-                        .then(() => socket.emit('offer', { to: remoteSocketId, offer: pc.localDescription }))
-                        .catch(e => console.error('[JamHub] Restart failed:', e));
+                    startCall(remoteSocketId, remoteUserName);
                 }
             } else if (pc.iceConnectionState === 'closed') {
                 removePeer(remoteSocketId);
             }
         };
 
-        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName, isOfferer: false };
+        pc.onconnectionstatechange = () => {
+            console.log(`Connection State (${remoteUserName}):`, pc.connectionState);
+            if (pc.connectionState === 'failed') {
+                console.error(`[JamHub] Connection failed for ${remoteUserName}, retrying in 2s...`);
+                setTimeout(() => {
+                    removePeer(remoteSocketId);
+                    // Re-initiate connection
+                    const newPc = createPeerConnection(remoteSocketId, remoteUserName);
+                    const peer = peersRef.current[remoteSocketId];
+                    if (peer) startCall(remoteSocketId, remoteUserName);
+                }, 2000);
+            }
+        };
 
-        // DRAIN BUFFER: Apply any candidates that arrived early
-        if (candidateBuffer.current[remoteSocketId]) {
-            console.log(`[JamHub] Draining early candidates for ${remoteUserName}`);
-            candidateBuffer.current[remoteSocketId].forEach(async (cand) => {
-                try {
-                    // We check if remoteDescription is set before adding (done in socket handler)
-                    // but since this is draining, we'll let the standard handler handle it or queue it back
-                } catch(e) {}
-            });
-        }
+        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName, isOfferer: false };
 
         setPeers((prev) => ({
             ...prev,
@@ -148,7 +181,7 @@ export function useWebRTC() {
         }));
 
         return pc;
-    }, [removePeer]);
+    }, [removePeer, startCall]);
 
     // ── Join Room ────────────────────────────────────────────
     const joinRoom = useCallback(async (name, room, opts = {}) => {
@@ -219,63 +252,76 @@ export function useWebRTC() {
 
     // ── Socket Events ────────────────────────────────────────
     useEffect(() => {
-        socket.on('existing-users', async (users) => {
+        socket.on('existing-peers', async (users) => {
+            console.log(`[JamHub] Found ${users.length} existing peers`);
             for (const user of users) {
-                const pc = createPeerConnection(user.socketId, user.userName);
-                if (peersRef.current[user.socketId]) peersRef.current[user.socketId].isOfferer = true;
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                socket.emit('offer', { to: user.socketId, offer });
+                createPeerConnection(user.id, user.userName);
+                await startCall(user.id, user.userName);
             }
         });
 
         socket.on('offer', async ({ from, offer, userName: rName }) => {
-            const pc = createPeerConnection(from, rName);
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            
-            // Apply any early candidates buffered for this peer
-            if (candidateBuffer.current[from]) {
-                while (candidateBuffer.current[from].length) {
-                    const c = candidateBuffer.current[from].shift();
-                    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-                }
+            console.log(`[JamHub] Received offer from ${rName || from}`);
+            let peer = peersRef.current[from];
+            if (!peer) {
+                peer = { pc: createPeerConnection(from, rName || 'Participant') };
             }
-            
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('answer', { to: from, answer });
+            try {
+                await peer.pc.setRemoteDescription(new RTCSessionDescription(offer));
+                await drainPendingIceCandidates(from);
+                const answer = await peer.pc.createAnswer();
+                await peer.pc.setLocalDescription(answer);
+                socket.emit('answer', { to: from, answer });
+            } catch (err) {
+                console.error(`[JamHub] Error handling offer from ${from}:`, err);
+            }
         });
 
         socket.on('answer', async ({ from, answer }) => {
+            console.log(`[JamHub] Received answer from ${from}`);
             const peer = peersRef.current[from];
             if (peer) {
-                await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
-                if (candidateBuffer.current[from]) {
-                    while (candidateBuffer.current[from].length) {
-                        const c = candidateBuffer.current[from].shift();
-                        await peer.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-                    }
+                try {
+                    await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
+                    await drainPendingIceCandidates(from);
+                } catch (err) {
+                    console.error(`[JamHub] Error handling answer from ${from}:`, err);
                 }
             }
         });
 
         socket.on('ice-candidate', async ({ from, candidate }) => {
+            if (!candidate) return;
             const peer = peersRef.current[from];
             if (peer && peer.pc.remoteDescription && peer.pc.remoteDescription.type) {
-                await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+                try {
+                    await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (err) {
+                    console.error(`[JamHub] Error adding ICE candidate from ${from}:`, err);
+                }
             } else {
-                // Buffer it!
                 if (!candidateBuffer.current[from]) candidateBuffer.current[from] = [];
                 candidateBuffer.current[from].push(candidate);
+                
+                // If peer doesn't exist yet, create it but wait for offer/existing-peers to initiate tracks
+                if (!peer) {
+                    createPeerConnection(from, 'Participant');
+                }
             }
         });
 
-        socket.on('user-joined', ({ socketId, userName: uName }) => {
+        socket.on('user-joined', ({ id, userName: uName }) => {
+            console.log(`[JamHub] User joined: ${uName} (${id})`);
             socket.emit('media-state', { roomId: roomIdRef.current, isMuted: isMutedRef.current, isCameraOff: isCameraOffRef.current });
         });
 
-        socket.on('user-left', ({ socketId }) => removePeer(socketId));
+        socket.on('user-left', ({ id }) => {
+            console.log(`[JamHub] User left: ${id}`);
+            removePeer(id);
+        });
+
         socket.on('chat-message', msg => setChatMessages(p => [...p, msg]));
+        
         socket.on('media-state', ({ from, isMuted: m, isCameraOff: v }) => {
             setPeers(p => { 
                 if (!p[from]) return p; 
@@ -284,11 +330,11 @@ export function useWebRTC() {
         });
 
         return () => {
-            socket.off('existing-users'); socket.off('offer'); socket.off('answer');
+            socket.off('existing-peers'); socket.off('offer'); socket.off('answer');
             socket.off('ice-candidate'); socket.off('user-joined'); socket.off('user-left');
             socket.off('chat-message'); socket.off('media-state');
         };
-    }, [createPeerConnection, removePeer, broadcastMediaState]);
+    }, [createPeerConnection, removePeer, startCall, drainPendingIceCandidates]);
 
     return {
         localStream, peers, isMuted, isCameraOff, isInRoom,
