@@ -29,4 +29,7 @@ export const socket = io(SIGNALING_SERVER, {
     // websocket first for lowest latency; polling as fallback for Render's
     // proxy which may delay the WebSocket upgrade on cold starts.
     transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
 });

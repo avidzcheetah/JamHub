@@ -12,6 +12,17 @@ const ICE_SERVERS = {
         // Additional public STUN for redundancy
         { urls: 'stun:stun.stunprotocol.org:3478' },
         { urls: 'stun:stun.voip.blackberry.com:3478' },
+        { urls: 'stun:stun.services.mozilla.com' },
+        // Free TURN relay — needed for peers behind NAT in production
+        {
+            urls: [
+                'turn:openrelay.metered.ca:80',
+                'turn:openrelay.metered.ca:443',
+                'turn:openrelay.metered.ca:443?transport=tcp',
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject',
+        },
     ],
     iceCandidatePoolSize: 10,
 };

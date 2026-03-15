@@ -13,9 +13,11 @@ const io = new Server(server, {
   cors: {
     origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
     methods: ["GET", "POST"],
+    credentials: true,
   },
-  // Render may block WS upgrade on first request — allow polling fallback
+  // Ensure websocket is tried first, consistent with client
   transports: ["websocket", "polling"],
+  allowEIO3: true,
 });
 
 // In-memory room state
