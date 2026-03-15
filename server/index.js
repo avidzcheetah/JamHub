@@ -4,6 +4,11 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
+
+console.log(`[JamHub] Node version: ${process.version}`);
+console.log(`[JamHub] METERED_API_KEY set: ${!!process.env.METERED_API_KEY}`);
+console.log(`[JamHub] METERED_APP_NAME set: ${!!process.env.METERED_APP_NAME}`);
+
 app.use(cors({
   origin: ["https://jamhub-avidz.vercel.app", "http://localhost:5173"],
 }));
