@@ -28,7 +28,7 @@ app.get('/api/ice-servers', async (req, res) => {
       ]);
     }
 
-    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`;
+    const url = `https://${appName}.metered.live/api/v1/turn/credential?secretKey=${apiKey}`;
     console.log(`📡 [JamHub] Fetching TURN credentials from Metered.ca...`);
     
     const response = await fetch(url).catch(e => {
