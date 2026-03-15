@@ -135,7 +135,7 @@ export function useWebRTC() {
             }
         };
 
-        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName };
+        peersRef.current[remoteSocketId] = { pc, userName: remoteUserName, candidatesQueue: [] };
         setPeers((prev) => ({
             ...prev,
             [remoteSocketId]: {
@@ -284,6 +284,18 @@ export function useWebRTC() {
         socket.on('offer', async ({ from, offer, userName: remoteUserName }) => {
             const pc = createPeerConnection(from, remoteUserName);
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+            // Process any queued candidates now that remote description is set
+            const peer = peersRef.current[from];
+            if (peer && peer.candidatesQueue.length > 0) {
+                while (peer.candidatesQueue.length > 0) {
+                    const candidate = peer.candidatesQueue.shift();
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
+                        console.error('[WebRTC] Error adding queued candidate:', e);
+                    });
+                }
+            }
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             socket.emit('answer', { to: from, answer });
@@ -293,6 +305,16 @@ export function useWebRTC() {
             const peer = peersRef.current[from];
             if (peer) {
                 await peer.pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+                // Process any queued candidates now that remote description is set
+                if (peer.candidatesQueue.length > 0) {
+                    while (peer.candidatesQueue.length > 0) {
+                        const candidate = peer.candidatesQueue.shift();
+                        await peer.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {
+                            console.error('[WebRTC] Error adding queued candidate:', e);
+                        });
+                    }
+                }
             }
         });
 
@@ -300,7 +322,13 @@ export function useWebRTC() {
             const peer = peersRef.current[from];
             if (peer) {
                 try {
-                    await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    // ICE candidates MUST be added after setRemoteDescription.
+                    // If it's not set yet, queue the candidate.
+                    if (peer.pc.remoteDescription && peer.pc.remoteDescription.type) {
+                        await peer.pc.addIceCandidate(new RTCIceCandidate(candidate));
+                    } else {
+                        peer.candidatesQueue.push(candidate);
+                    }
                 } catch (e) {
                     console.error('Error adding ICE candidate:', e);
                 }
