@@ -170,6 +170,8 @@ const peerMap = new Map();
 
 const rtcConfig = {
     iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun.relay.metered.ca:80" },
         {
             urls: "turn:global.relay.metered.ca:80",
@@ -191,8 +193,7 @@ const rtcConfig = {
             username: "0b68424087eca4949004b6aa",
             credential: "ox/368UgycEW2z9u",
         },
-    ],
-    iceTransportPolicy: "all",
+    ]
 };
 
 // ==================== NAVIGATION ====================
