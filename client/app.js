@@ -454,6 +454,9 @@ function updateParticipantCount() {
     if (participantCountEl) {
         participantCountEl.textContent = `${count} participant${count !== 1 ? "s" : ""}`;
     }
+    if (remoteVideosContainer) {
+        remoteVideosContainer.setAttribute("data-count", count.toString());
+    }
 }
 
 // ==================== LEAVE ====================
@@ -700,9 +703,9 @@ if (socket) {
     });
     socket.on("user-joined", (data) => {
         const id = typeof data === "string" ? data : data.id;
-        const displayName = typeof data === "object" && data.displayName ? data.displayName : id.slice(0, 8);
+        const displayName = (typeof data === "object" && data.displayName) ? data.displayName : id.slice(0, 8);
         peerNames.set(id, displayName);
-        // Don't start call here — wait for new peer to call us via existing-peers
+        updatePeerLabel(id); // Ensure the name tag updates if the video box was created early
     });
     socket.on("user-renamed", ({ id, displayName }) => {
         peerNames.set(id, displayName);

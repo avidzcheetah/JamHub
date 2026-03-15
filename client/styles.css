@@ -537,33 +537,77 @@ body {
 /* Conference Video Area */
 .conf-video-area {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: 0.75rem;
+    display: grid;
     gap: 0.75rem;
+    padding: 0.75rem;
     overflow: hidden;
     min-height: 0;
+    align-content: center;
+    justify-content: center;
+    width: 100%;
 }
 
-.conf-video-main {
-    flex: 1;
+/* Dynamic Grid sizes based on participants */
+.conf-video-area[data-count="1"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+.conf-video-area[data-count="2"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
+}
+@media (max-width: 768px) {
+    .conf-video-area[data-count="2"] {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(2, 1fr);
+    }
+}
+.conf-video-area[data-count="3"],
+.conf-video-area[data-count="4"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+.conf-video-area[data-count="5"],
+.conf-video-area[data-count="6"] {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+.conf-video-area[data-count="7"],
+.conf-video-area[data-count="8"],
+.conf-video-area[data-count="9"] {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+}
+.conf-video-area {
+    /* Fallback for 10+ */
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-auto-rows: 1fr;
+}
+
+.video-box {
     position: relative;
     background: linear-gradient(145deg, #0d0d1f, #111128);
     border-radius: var(--radius-lg);
     overflow: hidden;
     border: 1px solid var(--border-subtle);
     min-height: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
 }
 
-.conf-video-main video {
+.video-box video {
     width: 100%;
     height: 100%;
     display: block;
     object-fit: cover;
+}
+.local-video-box video {
     transform: scaleX(-1);
 }
 
-.video-name-tag {
+.video-name-tag,
+.remote-peer .peer-name {
     position: absolute;
     bottom: 0.75rem;
     left: 0.75rem;
@@ -575,59 +619,23 @@ body {
     font-weight: 500;
     color: var(--text-primary);
     z-index: 3;
-}
-
-/* Remote videos */
-.conf-remote-videos {
-    display: flex;
-    gap: 0.75rem;
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
-}
-
-.conf-remote-videos:empty {
-    display: none;
-}
-
-.conf-remote-videos .video-box {
-    flex: 0 0 280px;
-    position: relative;
-    background: linear-gradient(145deg, #0d0d1f, #111128);
-    border-radius: var(--radius);
-    overflow: hidden;
-    border: 1px solid var(--border-subtle);
-}
-
-.conf-remote-videos .video-box video {
-    width: 100%;
-    aspect-ratio: 16 / 10;
-    object-fit: cover;
-    display: block;
-    background: #000;
-}
-
-.conf-remote-videos .video-box .peer-name {
-    position: absolute;
-    bottom: 1.75rem;
-    left: 0.5rem;
     margin: 0;
-    padding: 0.2rem 0.5rem;
-    background: rgba(0, 0, 0, 0.6);
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--text-primary);
 }
 
-.conf-remote-videos .video-box .status {
+.remote-peer .status {
     position: absolute;
-    bottom: 0.25rem;
-    left: 0.5rem;
+    top: 0.75rem;
+    right: 0.75rem;
     margin: 0;
-    padding: 0.1rem 0.5rem;
+    padding: 0.25rem 0.5rem;
     font-size: 0.6875rem;
-    color: var(--text-muted);
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-sm);
+    z-index: 3;
 }
+
 
 /* ==================== FLOATING CONTROLS ==================== */
 .conf-controls {

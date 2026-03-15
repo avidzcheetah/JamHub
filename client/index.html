@@ -157,9 +157,9 @@
         </header>
 
         <!-- Video Area -->
-        <div class="conf-video-area">
-            <!-- Local Video (main) -->
-            <div class="conf-video-main" id="localVideoContainer">
+        <div class="conf-video-area" id="remoteVideosContainer" data-count="1">
+            <!-- Local Video -->
+            <div class="video-box local-video-box" id="localVideoContainer">
                 <video id="localVideo" autoplay playsinline muted></video>
                 <div id="cameraOffOverlay" class="camera-off-overlay" style="display: none;">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -170,9 +170,6 @@
                 </div>
                 <div class="video-name-tag" id="localDisplayName">You</div>
             </div>
-
-            <!-- Remote Videos Grid -->
-            <div id="remoteVideosContainer" class="conf-remote-videos"></div>
         </div>
 
         <!-- Bottom Floating Controls -->
